@@ -50,120 +50,108 @@ public:
    {}
 };
 
-struct TinyGPSLocation
+struct LatLong
+{
+  RawDegrees lat;
+  RawDegrees lng;
+};
+
+template<typename T>
+struct TinyGPSDatum
+{
+  friend class TinyGPSPlus;
+public:
+  uint32_t age() const       { return this->isValid() ? millis() - lastCommitTime : static_cast<uint32_t>(ULONG_MAX); }
+  bool isValid() const    { return (flags & FLAG_VALID) != 0; }
+  bool isUpdated() const  { return (flags & FLAG_UPDATED) != 0; }
+  T value()        { flags &= (~FLAG_UPDATED); return val; }
+  
+  TinyGPSDatum() : flags(FLAG_DEFAULT), val(T())
+  {}
+protected:
+  enum {FLAG_DEFAULT=0, FLAG_VALID=(1<<0), FLAG_UPDATED=(1<<1)};
+  uint8_t flags;
+  T val, newval;
+  uint32_t lastCommitTime;
+};
+
+struct TinyGPSLocation : public TinyGPSDatum<LatLong>
 {
    friend class TinyGPSPlus;
 public:
-   bool isValid() const    { return valid; }
-   bool isUpdated() const  { return updated; }
-   uint32_t age() const    { return valid ? millis() - lastCommitTime : (uint32_t)ULONG_MAX; }
-   const RawDegrees &rawLat()     { updated = false; return rawLatData; }
-   const RawDegrees &rawLng()     { updated = false; return rawLngData; }
+   const RawDegrees &rawLat()     { return value().lat; }
+   const RawDegrees &rawLng()     { return value().lng; }
    double lat();
    double lng();
 
-   TinyGPSLocation() : valid(false), updated(false)
+   TinyGPSLocation()
    {}
 
 private:
-   bool valid, updated;
-   RawDegrees rawLatData, rawLngData, rawNewLatData, rawNewLngData;
-   uint32_t lastCommitTime;
    void commit();
    void setLatitude(const char *term);
    void setLongitude(const char *term);
 };
 
-struct TinyGPSDate
+struct TinyGPSDate : public TinyGPSDatum<uint32_t>
 {
    friend class TinyGPSPlus;
 public:
-   bool isValid() const       { return valid; }
-   bool isUpdated() const     { return updated; }
-   uint32_t age() const       { return valid ? millis() - lastCommitTime : (uint32_t)ULONG_MAX; }
-
-   uint32_t value()           { updated = false; return date; }
    uint16_t year();
    uint8_t month();
    uint8_t day();
 
-   TinyGPSDate() : valid(false), updated(false), date(0)
+   TinyGPSDate()
    {}
 
 private:
-   bool valid, updated;
-   uint32_t date, newDate;
-   uint32_t lastCommitTime;
    void commit();
    void setDate(const char *term);
 };
 
-struct TinyGPSTime
+struct TinyGPSTime : public TinyGPSDatum<uint32_t>
 {
    friend class TinyGPSPlus;
 public:
-   bool isValid() const       { return valid; }
-   bool isUpdated() const     { return updated; }
-   uint32_t age() const       { return valid ? millis() - lastCommitTime : (uint32_t)ULONG_MAX; }
-
-   uint32_t value()           { updated = false; return time; }
    uint8_t hour();
    uint8_t minute();
    uint8_t second();
    uint8_t centisecond();
 
-   TinyGPSTime() : valid(false), updated(false), time(0)
+   TinyGPSTime()
    {}
 
 private:
-   bool valid, updated;
-   uint32_t time, newTime;
-   uint32_t lastCommitTime;
    void commit();
    void setTime(const char *term);
 };
 
-struct TinyGPSDecimal
+struct TinyGPSDecimal : public TinyGPSDatum<uint32_t>
 {
    friend class TinyGPSPlus;
 public:
-   bool isValid() const    { return valid; }
-   bool isUpdated() const  { return updated; }
-   uint32_t age() const    { return valid ? millis() - lastCommitTime : (uint32_t)ULONG_MAX; }
-   int32_t value()         { updated = false; return val; }
 
-   TinyGPSDecimal() : valid(false), updated(false), val(0)
+   TinyGPSDecimal()
    {}
 
 private:
-   bool valid, updated;
-   uint32_t lastCommitTime;
-   int32_t val, newval;
    void commit();
    void set(const char *term);
 };
 
-struct TinyGPSInteger
+struct TinyGPSInteger : public TinyGPSDatum<uint32_t>
 {
    friend class TinyGPSPlus;
 public:
-   bool isValid() const    { return valid; }
-   bool isUpdated() const  { return updated; }
-   uint32_t age() const    { return valid ? millis() - lastCommitTime : (uint32_t)ULONG_MAX; }
-   uint32_t value()        { updated = false; return val; }
-
-   TinyGPSInteger() : valid(false), updated(false), val(0)
+   TinyGPSInteger()
    {}
 
 private:
-   bool valid, updated;
-   uint32_t lastCommitTime;
-   uint32_t val, newval;
    void commit();
    void set(const char *term);
 };
 
-struct TinyGPSSpeed : TinyGPSDecimal
+struct TinyGPSSpeed : public TinyGPSDecimal
 {
    double knots()    { return value() / 100.0; }
    double mph()      { return _GPS_MPH_PER_KNOT * value() / 100.0; }
@@ -176,7 +164,7 @@ struct TinyGPSCourse : public TinyGPSDecimal
    double deg()      { return value() / 100.0; }
 };
 
-struct TinyGPSAltitude : TinyGPSDecimal
+struct TinyGPSAltitude : public TinyGPSDecimal
 {
    double meters()       { return value() / 100.0; }
    double miles()        { return _GPS_MILES_PER_METER * value() / 100.0; }
@@ -185,17 +173,15 @@ struct TinyGPSAltitude : TinyGPSDecimal
 };
 
 class TinyGPSPlus;
-class TinyGPSCustom
+
+class TinyGPSCustom : public TinyGPSDatum<uint8_t>
 {
 public:
    TinyGPSCustom() {};
    TinyGPSCustom(TinyGPSPlus &gps, const char *sentenceName, int termNumber);
    void begin(TinyGPSPlus &gps, const char *_sentenceName, int _termNumber);
 
-   bool isUpdated() const  { return updated; }
-   bool isValid() const    { return valid; }
-   uint32_t age() const    { return valid ? millis() - lastCommitTime : (uint32_t)ULONG_MAX; }
-   const char *value()     { updated = false; return buffer; }
+   const char *value()     { this->value(); return buffer; }
 
 private:
    void commit();
@@ -203,8 +189,6 @@ private:
 
    char stagingBuffer[_GPS_MAX_FIELD_SIZE + 1];
    char buffer[_GPS_MAX_FIELD_SIZE + 1];
-   unsigned long lastCommitTime;
-   bool valid, updated;
    const char *sentenceName;
    int termNumber;
    friend class TinyGPSPlus;
@@ -242,16 +226,28 @@ public:
   uint32_t passedChecksum()   const { return passedChecksumCount; }
 
 private:
+  bool sentenceHasFix() const
+  {
+    return (flags & FLAG_SENTENCE_HAS_FIX)!=0;
+  }
+  void setSentenceHasFix(bool const i_value)
+  {
+    if(i_value) {
+      flags |= FLAG_SENTENCE_HAS_FIX;
+    } else {
+      flags &= ~FLAG_IS_CHECKSUM_TERM;
+    }
+  }
+  enum {FLAG_DEFAULT=0, FLAG_IS_CHECKSUM_TERM=(1<<0), FLAG_SENTENCE_HAS_FIX=(1<<1)};
   enum {GPS_SENTENCE_GPGGA, GPS_SENTENCE_GPRMC, GPS_SENTENCE_OTHER};
 
   // parsing state variables
   uint8_t parity;
-  bool isChecksumTerm;
+  uint8_t flags;
   char term[_GPS_MAX_FIELD_SIZE];
   uint8_t curSentenceType;
   uint8_t curTermNumber;
   uint8_t curTermOffset;
-  bool sentenceHasFix;
 
   // custom element support
   friend class TinyGPSCustom;
